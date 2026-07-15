@@ -2,7 +2,7 @@
 title: OpenRouter Video Generator
 description: Generates high-quality videos using OpenRouter's Video Generation API. Can also list available video models dynamically.
 author: Antigravity
-version: 1.4
+version: 1.5
 requirements: aiohttp
 """
 
@@ -13,7 +13,23 @@ import time
 import aiohttp
 import json
 from typing import Optional, Callable, Awaitable
+from urllib.parse import urlparse
 from pydantic import BaseModel, Field
+
+
+def _is_openrouter_url(url: str) -> bool:
+    """True only for https URLs whose host is exactly openrouter.ai.
+
+    Parses the host rather than prefix-matching the string: "https://openrouter.ai"
+    is also a prefix of "https://openrouter.ai.example.com", so startswith() would
+    hand the bearer token to any host that registers such a domain.
+    """
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    return parsed.scheme == "https" and parsed.hostname == "openrouter.ai"
+
 
 class Tools:
     class Valves(BaseModel):
@@ -28,6 +44,12 @@ class Tools:
         MAX_TIMEOUT_SECONDS: int = Field(
             default=600,
             description="Maximum time to wait before failing (in seconds)"
+        )
+        # Per-request ceiling, so a single hung poll or download can't stall the
+        # whole call until MAX_TIMEOUT_SECONDS. Raise it on slow connections.
+        REQUEST_TIMEOUT_SECONDS: int = Field(
+            default=300,
+            description="Maximum time for any single HTTP request, e.g. a video download (in seconds)"
         )
 
     def __init__(self):
@@ -56,7 +78,8 @@ class Tools:
             "X-Title": "OpenWebUI Video Tool"
         }
 
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=self.valves.REQUEST_TIMEOUT_SECONDS)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get("https://openrouter.ai/api/v1/videos/models", headers=headers) as resp:
                 if resp.status != 200:
                     err_text = await resp.text()
@@ -94,7 +117,8 @@ class Tools:
         self,
         prompt: str,
         model_id: str = Field(
-            description="The ID of the OpenRouter video model to use (e.g., 'google/veo-2.0', 'minimax/video-01')."
+            # Examples must be slugs that exist in the live catalog; the LLM copies them verbatim.
+            description="The ID of the OpenRouter video model to use (e.g., 'google/veo-3.1', 'openai/sora-2-pro', 'kwaivgi/kling-v3.0-pro')."
         ),
         aspect_ratio: str = Field(
             default="16:9", description="Aspect ratio of the video (e.g., '16:9', '9:16'). Must be supported by the model."
@@ -122,10 +146,10 @@ class Tools:
         ),
         __messages__: list = None,
         __event_emitter__: Callable[[dict], Awaitable[None]] = None,
-    ) -> str:
+    ) -> str | tuple:
         """
         Generates a video based on the user's prompt and requested model settings using OpenRouter.
-        
+
         :param prompt: A detailed description of the video you want the model to generate.
         :param model_id: The OpenRouter model ID to use.
         :param aspect_ratio: The aspect ratio.
@@ -135,7 +159,7 @@ class Tools:
         :param image_mode: How images should be processed.
         :param image_urls: Optional image URLs to process.
         :param provider_options: Optional provider specific configuration dict.
-        :return: An HTML5 video player containing the generated video, or an error message.
+        :return: On success, an (HTMLResponse, message) tuple embedding an HTML5 video player. On failure, an error string.
         """
         def resolve_val(v, default):
             if type(v).__name__ == "FieldInfo":
@@ -172,11 +196,15 @@ class Tools:
             if aspect_ratio:
                 payload["aspect_ratio"] = aspect_ratio
             if duration_seconds:
-                payload["duration"] = int(duration_seconds)
+                # Tolerate "8s" / "8 seconds" as well as "8"; skip if no digits at all.
+                digits = "".join(c for c in str(duration_seconds) if c.isdigit())
+                if digits:
+                    payload["duration"] = int(digits)
             if resolution:
                 payload["resolution"] = resolution
-            if generate_audio:
-                payload["generate_audio"] = True
+            # Always send the explicit boolean: models that default audio-on (Veo, Sora,
+            # Kling, Seedance, Wan) can only be silenced by an explicit false.
+            payload["generate_audio"] = bool(generate_audio)
 
             if provider_options and isinstance(provider_options, dict):
                 payload["provider"] = {
@@ -211,21 +239,19 @@ class Tools:
                         } for img in image_list
                     ]
                 else:
+                    # image_mode names what the FIRST image anchors; a 2nd image takes the
+                    # opposite end. Explicit order beats the old positional special-casing.
                     frame_images = []
-                    for i, img in enumerate(image_list):
-                        frame_type = "first_frame"
-                        if i == 0 and image_mode == "last_frame":
-                            frame_type = "last_frame"
-                        elif i == 1 and image_mode == "first_frame":
-                            frame_type = "last_frame"
-                            
+                    if image_mode == "last_frame":
+                        order = ["last_frame", "first_frame"]
+                    else:  # "first_frame" (default)
+                        order = ["first_frame", "last_frame"]
+                    for i, img in enumerate(image_list[:2]):  # exact-frame anchoring supports max 2
                         frame_images.append({
                             "type": "image_url",
                             "image_url": {"url": img},
-                            "frame_type": frame_type
+                            "frame_type": order[i]
                         })
-                        if i == 1: # Only max 2 frames are generally supported for exact frame anchoring
-                            break
                     payload["frame_images"] = frame_images
 
             # 1. Submit the Job
@@ -235,46 +261,53 @@ class Tools:
                     "data": {"description": f"Submitting job to {model_id}...", "done": False}
                 })
 
-            async with aiohttp.ClientSession() as session:
+            # One session for submit + poll + download, with a per-request timeout so a
+            # hung call fails on its own rather than riding the MAX_TIMEOUT_SECONDS guard.
+            timeout = aiohttp.ClientTimeout(total=self.valves.REQUEST_TIMEOUT_SECONDS)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post("https://openrouter.ai/api/v1/videos", headers=headers, json=payload) as resp:
                     if resp.status not in [200, 201, 202]:
                         err_text = await resp.text()
                         return f"API Error {resp.status} when submitting video: {err_text}. You may have used unsupported parameters. Use list_video_models to check the model's capabilities."
-                    
+
                     data = await resp.json()
                     polling_url = data.get("polling_url")
-                    
+                    job_id = data.get("id")  # needed to build the /content download URL below
+
                     if not polling_url:
                         return "Error: No polling URL returned by OpenRouter."
 
-            # 2. Poll for Completion
-            start_time = time.time()
-            video_urls = []
-            
-            while True:
-                elapsed_time = int(time.time() - start_time)
-                if elapsed_time > self.valves.MAX_TIMEOUT_SECONDS:
-                    return f"Generation timed out after {self.valves.MAX_TIMEOUT_SECONDS} seconds."
-                
-                if __event_emitter__:
-                    await __event_emitter__({
-                        "type": "status",
-                        "data": {"description": f"Generating video... (Elapsed: {elapsed_time}s).", "done": False}
-                    })
-                
-                await asyncio.sleep(self.valves.POLL_INTERVAL_SECONDS)
-                
-                async with aiohttp.ClientSession() as session:
+                # 2. Poll for Completion
+                start_time = time.time()
+                video_urls = []
+
+                while True:
+                    elapsed_time = int(time.time() - start_time)
+                    if elapsed_time > self.valves.MAX_TIMEOUT_SECONDS:
+                        return f"Generation timed out after {self.valves.MAX_TIMEOUT_SECONDS} seconds."
+
+                    if __event_emitter__:
+                        await __event_emitter__({
+                            "type": "status",
+                            "data": {"description": f"Generating video... (Elapsed: {elapsed_time}s).", "done": False}
+                        })
+
+                    await asyncio.sleep(self.valves.POLL_INTERVAL_SECONDS)
+
                     async with session.get(polling_url, headers=headers) as poll_resp:
                         if poll_resp.status not in [200, 201, 202]:
                             err_text = await poll_resp.text()
                             return f"Polling API Error {poll_resp.status}: {err_text}"
-                        
+
                         poll_data = await poll_resp.json()
                         status = poll_data.get("status")
-                        
+
                         if status == "completed":
                             urls = poll_data.get("unsigned_urls", [])
+                            if not urls and job_id:
+                                # unsigned_urls is the fallback and only appears when
+                                # has_unsigned_urls is true; /content is the canonical path.
+                                urls = [f"https://openrouter.ai/api/v1/videos/{job_id}/content?index=0"]
                             if urls:
                                 video_urls = urls
                             break
@@ -282,27 +315,29 @@ class Tools:
                             err_msg = poll_data.get("error", "Unknown error")
                             return f"Generation failed: {err_msg}"
 
-            if not video_urls:
-                return "The model completed the request but no video URLs were returned."
+                if not video_urls:
+                    return "The model completed the request but no video URLs were returned."
 
-            # 3. Download the Video
-            if __event_emitter__:
-                await __event_emitter__({
-                    "type": "status",
-                    "data": {"description": "Video generated! Downloading to server...", "done": False}
-                })
-                
-            from open_webui.config import STATIC_DIR
-            static_videos_dir = os.path.join(STATIC_DIR, "videos")
-            os.makedirs(static_videos_dir, exist_ok=True)
-            
-            local_urls = []
-            for remote_url in video_urls:
-                video_id = str(uuid.uuid4())
-                file_path = os.path.join(static_videos_dir, f"{video_id}.mp4")
-                
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(remote_url, headers=headers) as dl_resp:
+                # 3. Download the Video
+                if __event_emitter__:
+                    await __event_emitter__({
+                        "type": "status",
+                        "data": {"description": "Video generated! Downloading to server...", "done": False}
+                    })
+
+                from open_webui.config import STATIC_DIR
+                static_videos_dir = os.path.join(STATIC_DIR, "videos")
+                os.makedirs(static_videos_dir, exist_ok=True)
+
+                local_urls = []
+                for remote_url in video_urls:
+                    video_id = str(uuid.uuid4())
+                    file_path = os.path.join(static_videos_dir, f"{video_id}.mp4")
+
+                    # Send the bearer token only to OpenRouter itself: a provider may return a
+                    # third-party CDN URL, and that host must never see the API key.
+                    dl_headers = headers if _is_openrouter_url(remote_url) else {}
+                    async with session.get(remote_url, headers=dl_headers) as dl_resp:
                         if dl_resp.status == 200:
                             video_bytes = await dl_resp.read()
                             with open(file_path, "wb") as f:

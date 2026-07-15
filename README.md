@@ -55,6 +55,10 @@ Once installed, you must provide your OpenRouter API key:
 2. Set your `OPENROUTER_API_KEY`. Get one at [openrouter.ai/keys](https://openrouter.ai/keys).
 3. Ensure the tool is **Enabled** in your chat window.
 
+Optional valves: `POLL_INTERVAL_SECONDS` (how often to check for completion), `MAX_TIMEOUT_SECONDS` (overall wait before giving up), and `REQUEST_TIMEOUT_SECONDS` (ceiling for any single HTTP request — raise it if you're on a slow connection and large downloads time out).
+
+> **Note on disk usage:** Generated videos are downloaded to `{STATIC_DIR}/videos/` and are **never cleaned up automatically**. On a long-lived self-hosted instance this directory grows without bound, so if you generate often, prune it periodically (e.g. a scheduled job deleting `.mp4` files older than N days).
+
 ## 🗣️ Usage Examples
 
 Because this tool is entirely LLM-driven, you don't need to fiddle with drop-down menus before generating. Just ask your assistant naturally!
