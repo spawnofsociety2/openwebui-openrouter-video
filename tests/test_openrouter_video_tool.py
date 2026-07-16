@@ -217,13 +217,32 @@ class TestApiKeyIsNotLeaked(_ToolTestCase):
 
 class TestPayload(_ToolTestCase):
     def test_generate_audio_false_is_sent_explicitly(self):
-        # Omitting it (v1.4) left audio-default models unsilenceable.
+        # Explicit intent must reach the API: false silences controllable models (Veo, verified live).
         _, submitted, _, _ = self._run({"status": "completed"}, generate_audio=False)
         self.assertIs(submitted.get("generate_audio"), False)
 
     def test_generate_audio_true_is_sent(self):
         _, submitted, _, _ = self._run({"status": "completed"}, generate_audio=True)
         self.assertIs(submitted.get("generate_audio"), True)
+
+    def test_generate_audio_omitted_when_unspecified(self):
+        # Tri-state (v1.6): no expressed intent -> no key sent -> the model's own default
+        # applies, matching the documented API semantics ("defaults to the endpoint's
+        # generate_audio capability flag"). v1.5 sent explicit false here, silencing
+        # audio-default models the user never asked to silence.
+        _, submitted, _, _ = self._run({"status": "completed"})
+        self.assertNotIn("generate_audio", submitted)
+
+    def test_seed_is_sent_when_provided(self):
+        for given, expected in ((1234, 1234), ("1234", 1234), (" 42 ", 42)):
+            _, submitted, _, _ = self._run({"status": "completed"}, seed=given)
+            self.assertEqual(submitted.get("seed"), expected, repr(given))
+
+    def test_seed_omitted_by_default_and_on_garbage(self):
+        _, submitted, _, _ = self._run({"status": "completed"})
+        self.assertNotIn("seed", submitted)
+        _, submitted, _, _ = self._run({"status": "completed"}, seed="not-a-number")
+        self.assertNotIn("seed", submitted)
 
     def test_duration_accepts_plain_and_suffixed_values(self):
         for given, expected in (("4", 4), ("8s", 8), ("8 seconds", 8)):
@@ -304,9 +323,11 @@ class TestCatalogAudioReporting(_ToolTestCase):
 
     CATALOG = {
         "data": [
-            {"id": "google/veo-3.1-fast", "generate_audio": True},
+            {"id": "google/veo-3.1-fast", "generate_audio": True,
+             "pricing_skus": {"duration_seconds_720p": "0.15"}},
             {"id": "minimax/hailuo-2.3", "generate_audio": False},
-            {"id": "x-ai/grok-imagine-video", "generate_audio": None},
+            {"id": "x-ai/grok-imagine-video", "generate_audio": None,
+             "pricing_skus": {"cents_per_video_output_second_720p": "7"}},
         ]
     }
 
@@ -331,6 +352,33 @@ class TestCatalogAudioReporting(_ToolTestCase):
         self.assertIn("not controllable", line)
         self.assertNotEqual(line, "no")
         self.assertNotEqual(line, "false")
+
+
+class TestCatalogPricing(_ToolTestCase):
+    """pricing_skus are rendered raw per model — units vary by provider, so no
+    normalization; a model without the field says Unknown rather than nothing."""
+
+    CATALOG = TestCatalogAudioReporting.CATALOG
+
+    def _pricing_line(self, model_id):
+        out = self._catalog(self.CATALOG)
+        current = None
+        for line in out.splitlines():
+            if "Model ID" in line:
+                current = line.split("`")[1]
+            if "Pricing SKUs" in line and current == model_id:
+                return line
+        raise AssertionError(f"no pricing line for {model_id}")
+
+    def test_skus_rendered_raw(self):
+        self.assertIn("duration_seconds_720p=0.15", self._pricing_line("google/veo-3.1-fast"))
+        self.assertIn("cents_per_video_output_second_720p=7", self._pricing_line("x-ai/grok-imagine-video"))
+
+    def test_units_warning_present(self):
+        self.assertIn("units vary by provider", self._pricing_line("google/veo-3.1-fast"))
+
+    def test_missing_pricing_reads_unknown(self):
+        self.assertIn("Unknown", self._pricing_line("minimax/hailuo-2.3"))
 
 
 if __name__ == "__main__":

@@ -9,7 +9,8 @@ A fully autonomous, "agentic" video generation tool for [OpenWebUI](https://open
 - **Agentic Model Discovery:** The LLM can dynamically pull the live catalog of OpenRouter's video models (Sora, Veo, Kling, Seedance, Hailuo, Wan, Grok, etc.) and check their capabilities (supported resolutions, aspect ratios, max durations, audio support) in real time.
 - **Background Polling & Auto-Download:** Handles OpenRouter's asynchronous polling endpoints autonomously. Downloads completed `.mp4` assets to your local OpenWebUI static server to prevent broken links or expired signed URLs.
 - **Rich HTML5 Embedding:** Injects a beautiful, responsive HTML5 video player natively inside the chat interface with a direct download link.
-- **Advanced Model Features:** Supports audio generation toggling, image references for style consistency, and provider-specific passthrough options (e.g. `negativePrompt` for the Google models).
+- **Advanced Model Features:** Supports audio generation toggling, deterministic seeds, image references for style consistency, and provider-specific passthrough options (e.g. `negativePrompt` for the Google models).
+- **Cost-Aware:** The live model catalog includes each model's raw pricing SKUs, so your assistant can answer "use the cheapest model" (units vary by provider — compare within a provider's own units).
 
 ## 🎬 Supported Models
 
@@ -41,6 +42,8 @@ The tool reads OpenRouter's catalog **live** at request time, so this list is a 
 > - **➖ not controllable** — `grok-imagine-video` and the `happyhorse` models report `generate_audio: null`. They **ignore** the parameter and apply their own default, and that default is *not* necessarily silence: Grok returns a stereo AAC track even when sent `generate_audio: false` (verified with ffprobe).
 >
 > So if you need a guaranteed-silent result, pick a ✅ model and pass `generate_audio=false`, or strip the audio track yourself afterwards.
+>
+> **Default behavior (since v1.6):** if you don't mention audio, the tool omits the parameter entirely and the model's own default applies — ✅ models typically produce audio (which may cost more, e.g. Kling bills 0.168/s with audio vs 0.112/s without). v1.5 sent an explicit `false` by default, which silently muted models you never asked to mute.
 >
 > **Note on 4K:** Only `veo-3.1`, `veo-3.1-fast`, and `seedance-2.0` currently support 4K output.
 
