@@ -2,7 +2,7 @@
 title: OpenRouter Video Generator
 description: Generates high-quality videos using OpenRouter's Video Generation API. Can also list available video models dynamically.
 author: Antigravity
-version: 1.5
+version: 1.6
 requirements: aiohttp
 """
 
@@ -60,8 +60,8 @@ class Tools:
         __event_emitter__: Callable[[dict], Awaitable[None]] = None,
     ) -> str:
         """
-        Fetches the live list of available OpenRouter video models, including their supported aspect ratios, durations, resolutions, and features.
-        Use this tool when the user asks what video models are available, or if you need to check which models support specific parameters.
+        Fetches the live list of available OpenRouter video models, including their supported aspect ratios, durations, resolutions, features, and raw pricing SKUs.
+        Use this tool when the user asks what video models are available, to check which models support specific parameters, or to compare cost before generating (pricing SKU units vary by provider - some quote dollars per second, others cents per second - so compare within a provider's own units).
         """
         if not self.valves.OPENROUTER_API_KEY or self.valves.OPENROUTER_API_KEY == "your-openrouter-api-key":
             return "Error: Please tell the user to set their OPENROUTER_API_KEY in the tool settings."
@@ -112,6 +112,10 @@ class Tools:
                 audio = "Not controllable - the model's own default applies (it may still include audio)"
             frames = ", ".join(frames_list) if frames_list else "None"
             passthrough = ", ".join(pass_list) if pass_list else "None"
+            # Raw SKUs on purpose: units differ by provider (happyhorse quotes USD/sec,
+            # grok quotes cents/sec), so a normalized single number would quietly be wrong.
+            skus = m.get("pricing_skus") or {}
+            pricing = ", ".join(f"{k}={v}" for k, v in skus.items()) if skus else "Unknown"
             
             output += f"- Model ID: `{m['id']}`\n"
             output += f"  - Aspect Ratios: {ar}\n"
@@ -119,7 +123,8 @@ class Tools:
             output += f"  - Resolutions: {res}\n"
             output += f"  - Supports Audio: {audio}\n"
             output += f"  - Supported Frame Images: {frames}\n"
-            output += f"  - Allowed Passthrough Parameters: {passthrough}\n\n"
+            output += f"  - Allowed Passthrough Parameters: {passthrough}\n"
+            output += f"  - Pricing SKUs (raw; units vary by provider): {pricing}\n\n"
 
         return output
 
@@ -140,7 +145,11 @@ class Tools:
             default="", description="(Optional) Output resolution (e.g., '720p', '1080p')."
         ),
         generate_audio: bool = Field(
-            default=False, description="Set to True to generate audio if the model supports it."
+            # Tri-state: None (omit -> model default), True (request audio), False (request silence).
+            default=None, description="True to request audio, False to request silence, omit for the model's default. Only honored where audio is controllable."
+        ),
+        seed: int = Field(
+            default=None, description="(Optional) Integer seed for deterministic generation. Determinism not guaranteed by all providers."
         ),
         image_mode: str = Field(
             default="first_frame", 
@@ -165,7 +174,8 @@ class Tools:
         :param aspect_ratio: Aspect ratio of the video, e.g. '16:9' or '9:16'. Must be supported by the model. Defaults to '16:9'.
         :param duration_seconds: (Optional) Length of the video in seconds, e.g. '4' or '8'. Must be one the model supports.
         :param resolution: (Optional) Output resolution, e.g. '720p' or '1080p'. Must be one the model supports.
-        :param generate_audio: Whether to request audio. Only honored by models that report audio as controllable in list_video_models; others ignore it and apply their own default, which may include audio regardless. Defaults to False.
+        :param generate_audio: (Optional) True to request audio, False to request a silent video. OMIT it entirely to use the model's own default (audio-capable models like Veo/Sora/Kling produce audio by default; audio may also cost more). Only honored by models that report audio as controllable in list_video_models; others ignore it.
+        :param seed: (Optional) Integer seed for deterministic generation - repeating the same seed and parameters should reproduce a similar video. Determinism is not guaranteed by all providers.
         :param image_mode: How to use provided images: 'first_frame', 'last_frame', or 'reference' (style/character consistency without forcing exact frame composition). Defaults to 'first_frame'.
         :param image_urls: (Optional) List of public image URLs to use as frames or references. At most 2 are used for frame anchoring; the second anchors the opposite end.
         :param provider_options: (Optional) Provider-specific options keyed by provider slug, e.g. {'google-vertex': {'parameters': {'negativePrompt': 'blurry'}}}. Check allowed_passthrough_parameters from list_video_models first.
@@ -189,7 +199,8 @@ class Tools:
         aspect_ratio = resolve_val(aspect_ratio, "16:9")
         duration_seconds = resolve_val(duration_seconds, "")
         resolution = resolve_val(resolution, "")
-        generate_audio = resolve_val(generate_audio, False)
+        generate_audio = resolve_val(generate_audio, None)
+        seed = resolve_val(seed, None)
         image_mode = resolve_val(image_mode, "first_frame")
         image_urls = resolve_val(image_urls, None)
         provider_options = resolve_val(provider_options, None)
@@ -218,9 +229,17 @@ class Tools:
                     payload["duration"] = int(digits)
             if resolution:
                 payload["resolution"] = resolution
-            # Always send the explicit boolean: models that default audio-on (Veo, Sora,
-            # Kling, Seedance, Wan) can only be silenced by an explicit false.
-            payload["generate_audio"] = bool(generate_audio)
+            # Tri-state (v1.6): send generate_audio only when intent was expressed.
+            # Omitted -> the model's own default applies (Veo/Sora/Kling default audio ON).
+            # Explicit False still silences controllable models (verified live on veo-3.1-fast);
+            # null-capability models (grok, happyhorse) ignore the param either way.
+            if generate_audio is not None:
+                payload["generate_audio"] = bool(generate_audio)
+            if seed is not None:
+                try:
+                    payload["seed"] = int(str(seed).strip())
+                except ValueError:
+                    pass  # ignore a non-numeric seed rather than failing a paid job
 
             if provider_options and isinstance(provider_options, dict):
                 payload["provider"] = {
