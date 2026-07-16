@@ -151,16 +151,22 @@ class Tools:
         Generates a video based on the user's prompt and requested model settings using OpenRouter.
 
         :param prompt: A detailed description of the video you want the model to generate.
-        :param model_id: The OpenRouter model ID to use.
-        :param aspect_ratio: The aspect ratio.
-        :param duration_seconds: The duration.
-        :param resolution: The resolution.
-        :param generate_audio: Boolean indicating whether to generate audio.
-        :param image_mode: How images should be processed.
-        :param image_urls: Optional image URLs to process.
-        :param provider_options: Optional provider specific configuration dict.
+        :param model_id: The OpenRouter model ID to use, e.g. 'google/veo-3.1', 'openai/sora-2-pro', 'kwaivgi/kling-v3.0-pro'. Call list_video_models first to see the live catalog.
+        :param aspect_ratio: Aspect ratio of the video, e.g. '16:9' or '9:16'. Must be supported by the model. Defaults to '16:9'.
+        :param duration_seconds: (Optional) Length of the video in seconds, e.g. '4' or '8'. Must be one the model supports.
+        :param resolution: (Optional) Output resolution, e.g. '720p' or '1080p'. Must be one the model supports.
+        :param generate_audio: Whether to generate audio. Only some models support audio - check list_video_models. Defaults to False.
+        :param image_mode: How to use provided images: 'first_frame', 'last_frame', or 'reference' (style/character consistency without forcing exact frame composition). Defaults to 'first_frame'.
+        :param image_urls: (Optional) List of public image URLs to use as frames or references. At most 2 are used for frame anchoring; the second anchors the opposite end.
+        :param provider_options: (Optional) Provider-specific options keyed by provider slug, e.g. {'google-vertex': {'parameters': {'negativePrompt': 'blurry'}}}. Check allowed_passthrough_parameters from list_video_models first.
         :return: On success, an (HTMLResponse, message) tuple embedding an HTML5 video player. On failure, an error string.
         """
+        # The :param lines above are the ONLY parameter descriptions the LLM sees. OpenWebUI
+        # builds the tool schema from this docstring (convert_function_to_pydantic_model) and
+        # passes the signature's Field() objects through as default values, not as schema --
+        # hence resolve_val below. Keep the Field descriptions in sync for human readers, but
+        # anything the model needs to know must live in a :param line, one line each. Text
+        # above the first :param becomes the tool description, so keep notes like this out of it.
         def resolve_val(v, default):
             if type(v).__name__ == "FieldInfo":
                 d = getattr(v, "default", default)
