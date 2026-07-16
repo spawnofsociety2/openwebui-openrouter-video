@@ -99,7 +99,9 @@ class Tools:
             ar = ", ".join(ar_list) if ar_list else "Any"
             dur = ", ".join([str(d) for d in dur_list]) if dur_list else "Any"
             res = ", ".join(res_list) if res_list else "Any"
-            audio = m.get("generate_audio", False)
+            # Video-only models send generate_audio: null, and the key IS present, so the
+            # .get() default never fires -- render a real bool, not an ambiguous "None".
+            audio = bool(m.get("generate_audio"))
             frames = ", ".join(frames_list) if frames_list else "None"
             passthrough = ", ".join(pass_list) if pass_list else "None"
             
