@@ -15,7 +15,7 @@ A fully autonomous, "agentic" video generation tool for [OpenWebUI](https://open
 
 The tool reads OpenRouter's catalog **live** at request time, so this list is a snapshot — new models appear automatically as OpenRouter adds them, and your assistant will always report the current lineup. As of this writing:
 
-| Model | Max Resolution | Durations | Aspect Ratios | Audio |
+| Model | Max Resolution | Durations | Aspect Ratios | Audio controllable? |
 | --- | --- | --- | --- | --- |
 | `openai/sora-2-pro` | 1080p | 4, 8, 12, 16, 20s | 16:9, 9:16 | ✅ |
 | `google/veo-3.1` | **4K** | 4, 6, 8s | 16:9, 9:16 | ✅ |
@@ -29,12 +29,18 @@ The tool reads OpenRouter's catalog **live** at request time, so this list is a 
 | `bytedance/seedance-1-5-pro` | 1080p | 4–12s | 1:1, 3:4, 9:16, 9:21, 4:3, 16:9, 21:9 | ✅ |
 | `alibaba/wan-2.7` | 1080p | 2–10s | 16:9, 9:16, 1:1, 4:3, 3:4 | ✅ |
 | `alibaba/wan-2.6` | 1080p | 5 or 10s | 16:9, 9:16 | ✅ |
-| `alibaba/happyhorse-1.1` | 1080p | 3–15s | 16:9, 9:16, 1:1, 4:3, 3:4, 21:9, 9:21 | ❌ |
-| `alibaba/happyhorse-1.0` | 1080p | 3–15s | 16:9, 9:16, 1:1, 4:3, 3:4, 21:9, 9:21 | ❌ |
+| `alibaba/happyhorse-1.1` | 1080p | 3–15s | 16:9, 9:16, 1:1, 4:3, 3:4, 21:9, 9:21 | ➖ |
+| `alibaba/happyhorse-1.0` | 1080p | 3–15s | 16:9, 9:16, 1:1, 4:3, 3:4, 21:9, 9:21 | ➖ |
 | `minimax/hailuo-2.3` | 1080p | 6 or 10s | 16:9 | ❌ |
-| `x-ai/grok-imagine-video` | 720p | 1–15s | 16:9, 9:16, 1:1, 4:3, 3:4, 3:2, 2:3 | ❌ |
+| `x-ai/grok-imagine-video` | 720p | 1–15s | 16:9, 9:16, 1:1, 4:3, 3:4, 3:2, 2:3 | ➖ |
 
-> **Note on audio:** Most models generate audio, but `grok-imagine-video`, `hailuo-2.3`, and the `happyhorse` models are video-only. The tool checks this automatically, so if you request audio from a video-only model your assistant will tell you and suggest an alternative.
+> **Note on audio:** The column above means *"is audio controllable via the `generate_audio` parameter"*, not *"does this model have sound"*. The catalog reports three distinct states:
+>
+> - **✅ controllable** — `generate_audio` is honored. `generate_audio=false` produces a genuinely silent video (verified on `veo-3.1-fast` with ffprobe).
+> - **❌ no audio** — only `minimax/hailuo-2.3`, which reports `generate_audio: false` outright.
+> - **➖ not controllable** — `grok-imagine-video` and the `happyhorse` models report `generate_audio: null`. They **ignore** the parameter and apply their own default, and that default is *not* necessarily silence: Grok returns a stereo AAC track even when sent `generate_audio: false` (verified with ffprobe).
+>
+> So if you need a guaranteed-silent result, pick a ✅ model and pass `generate_audio=false`, or strip the audio track yourself afterwards.
 >
 > **Note on 4K:** Only `veo-3.1`, `veo-3.1-fast`, and `seedance-2.0` currently support 4K output.
 

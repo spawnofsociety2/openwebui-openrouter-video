@@ -99,9 +99,17 @@ class Tools:
             ar = ", ".join(ar_list) if ar_list else "Any"
             dur = ", ".join([str(d) for d in dur_list]) if dur_list else "Any"
             res = ", ".join(res_list) if res_list else "Any"
-            # Video-only models send generate_audio: null, and the key IS present, so the
-            # .get() default never fires -- render a real bool, not an ambiguous "None".
-            audio = bool(m.get("generate_audio"))
+            # generate_audio describes whether the PARAMETER is configurable, not whether the
+            # model has sound. null means "not configurable" -- grok-imagine-video reports null
+            # and still returns a stereo AAC track, ignoring an explicit generate_audio: false.
+            # Rendering null as False told the LLM those models are silent, which is untrue.
+            ga = m.get("generate_audio")
+            if ga is True:
+                audio = "Yes - controllable via the generate_audio parameter"
+            elif ga is False:
+                audio = "No"
+            else:
+                audio = "Not controllable - the model's own default applies (it may still include audio)"
             frames = ", ".join(frames_list) if frames_list else "None"
             passthrough = ", ".join(pass_list) if pass_list else "None"
             
@@ -157,7 +165,7 @@ class Tools:
         :param aspect_ratio: Aspect ratio of the video, e.g. '16:9' or '9:16'. Must be supported by the model. Defaults to '16:9'.
         :param duration_seconds: (Optional) Length of the video in seconds, e.g. '4' or '8'. Must be one the model supports.
         :param resolution: (Optional) Output resolution, e.g. '720p' or '1080p'. Must be one the model supports.
-        :param generate_audio: Whether to generate audio. Only some models support audio - check list_video_models. Defaults to False.
+        :param generate_audio: Whether to request audio. Only honored by models that report audio as controllable in list_video_models; others ignore it and apply their own default, which may include audio regardless. Defaults to False.
         :param image_mode: How to use provided images: 'first_frame', 'last_frame', or 'reference' (style/character consistency without forcing exact frame composition). Defaults to 'first_frame'.
         :param image_urls: (Optional) List of public image URLs to use as frames or references. At most 2 are used for frame anchoring; the second anchors the opposite end.
         :param provider_options: (Optional) Provider-specific options keyed by provider slug, e.g. {'google-vertex': {'parameters': {'negativePrompt': 'blurry'}}}. Check allowed_passthrough_parameters from list_video_models first.
