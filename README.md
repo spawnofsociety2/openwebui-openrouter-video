@@ -86,6 +86,14 @@ Because this tool is entirely LLM-driven, you don't need to fiddle with drop-dow
 - `aiohttp` (Automatically parsed by OpenWebUI)
 - An active OpenWebUI instance.
 
+## 🧪 Tests
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+No network, API key, or OpenWebUI install required — `aiohttp` is mocked and the two runtime imports are stubbed. The suite guards the bugs that were live in 1.4 and cost real money to find: the API key being sent to non-OpenRouter download hosts, completed jobs being dropped when they return no `unsigned_urls`, and `generate_audio=false` never reaching the API. If you change the download loop or the payload builder, run these first.
+
 ## 📜 License
 
 MIT License. Feel free to fork and modify!
