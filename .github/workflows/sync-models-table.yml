@@ -1,0 +1,46 @@
+name: Sync supported-models table
+
+# Keeps the README "Supported Models" table in sync with OpenRouter's live
+# catalog. The /videos/models endpoint is public, so no API key/secret is
+# needed. Opens a PR only when the table actually drifts.
+
+on:
+  schedule:
+    # 06:00 UTC on the 1st and 15th of every month (~every two weeks).
+    - cron: "0 6 1,15 * *"
+  workflow_dispatch: {}  # allow manual runs from the Actions tab
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Regenerate models table from live catalog
+        run: python scripts/update_models_table.py
+
+      - name: Open PR if the table changed
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore: sync supported-models table with OpenRouter catalog"
+          branch: chore/sync-models-table
+          delete-branch: true
+          title: "chore: sync supported-models table with OpenRouter catalog"
+          body: |
+            Automated update of the **Supported Models** table in `README.md`
+            from OpenRouter's live `/videos/models` catalog
+            (via `scripts/update_models_table.py`).
+
+            Review the diff and merge if it looks right. If this PR is empty or
+            not created, the table was already in sync.
+
+            🤖 Scheduled by `.github/workflows/sync-models-table.yml`
+          labels: automated, documentation
