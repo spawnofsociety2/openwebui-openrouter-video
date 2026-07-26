@@ -14,26 +14,29 @@ A fully autonomous, "agentic" video generation tool for [OpenWebUI](https://open
 
 ## 🎬 Supported Models
 
-The tool reads OpenRouter's catalog **live** at request time, so this list is a snapshot — new models appear automatically as OpenRouter adds them, and your assistant will always report the current lineup. As of this writing:
+The tool reads OpenRouter's catalog **live** at request time, so this list is a snapshot — new models appear automatically as OpenRouter adds them, and your assistant will always report the current lineup. The table below is regenerated from the live catalog by [`scripts/update_models_table.py`](scripts/update_models_table.py) (run on a schedule via GitHub Actions), so it stays close to reality:
 
+<!-- MODELS_TABLE_START -->
 | Model | Max Resolution | Durations | Aspect Ratios | Audio controllable? |
 | --- | --- | --- | --- | --- |
-| `openai/sora-2-pro` | 1080p | 4, 8, 12, 16, 20s | 16:9, 9:16 | ✅ |
+| `alibaba/happyhorse-1.0` | 1080p | 3–15s | 16:9, 9:16, 1:1, 4:3, 3:4, 21:9, 9:21 | ➖ |
+| `alibaba/happyhorse-1.1` | 1080p | 3–15s | 16:9, 9:16, 1:1, 4:3, 3:4, 21:9, 9:21 | ➖ |
+| `alibaba/wan-2.6` | 1080p | 5 or 10s | 16:9, 9:16 | ✅ |
+| `alibaba/wan-2.7` | 1080p | 2–10s | 16:9, 9:16, 1:1, 4:3, 3:4 | ✅ |
+| `bytedance/seedance-1-5-pro` | 1080p | 4–12s | 1:1, 3:4, 9:16, 9:21, 4:3, 16:9, 21:9 | ✅ |
+| `bytedance/seedance-2.0` | **4K** | 4–15s | 1:1, 3:4, 9:16, 4:3, 16:9, 21:9, 9:21 | ✅ |
+| `bytedance/seedance-2.0-fast` | 720p | 4–15s | 1:1, 3:4, 9:16, 4:3, 16:9, 21:9, 9:21 | ✅ |
 | `google/veo-3.1` | **4K** | 4, 6, 8s | 16:9, 9:16 | ✅ |
 | `google/veo-3.1-fast` | **4K** | 4, 6, 8s | 16:9, 9:16 | ✅ |
 | `google/veo-3.1-lite` | 1080p | 4, 6, 8s | 16:9, 9:16 | ✅ |
 | `kwaivgi/kling-v3.0-pro` | 720p | 3–15s | 16:9, 9:16, 1:1 | ✅ |
 | `kwaivgi/kling-v3.0-std` | 720p | 3–15s | 16:9, 9:16, 1:1 | ✅ |
 | `kwaivgi/kling-video-o1` | 720p | 5 or 10s | 16:9, 9:16, 1:1 | ✅ |
-| `bytedance/seedance-2.0` | **4K** | 4–15s | 1:1, 3:4, 9:16, 4:3, 16:9, 21:9, 9:21 | ✅ |
-| `bytedance/seedance-2.0-fast` | 720p | 4–15s | 1:1, 3:4, 9:16, 4:3, 16:9, 21:9, 9:21 | ✅ |
-| `bytedance/seedance-1-5-pro` | 1080p | 4–12s | 1:1, 3:4, 9:16, 9:21, 4:3, 16:9, 21:9 | ✅ |
-| `alibaba/wan-2.7` | 1080p | 2–10s | 16:9, 9:16, 1:1, 4:3, 3:4 | ✅ |
-| `alibaba/wan-2.6` | 1080p | 5 or 10s | 16:9, 9:16 | ✅ |
-| `alibaba/happyhorse-1.1` | 1080p | 3–15s | 16:9, 9:16, 1:1, 4:3, 3:4, 21:9, 9:21 | ➖ |
-| `alibaba/happyhorse-1.0` | 1080p | 3–15s | 16:9, 9:16, 1:1, 4:3, 3:4, 21:9, 9:21 | ➖ |
 | `minimax/hailuo-2.3` | 1080p | 6 or 10s | 16:9 | ❌ |
+| `openai/sora-2-pro` | 1080p | 4, 8, 12, 16, 20s | 16:9, 9:16 | ✅ |
 | `x-ai/grok-imagine-video` | 720p | 1–15s | 16:9, 9:16, 1:1, 4:3, 3:4, 3:2, 2:3 | ➖ |
+| `x-ai/grok-imagine-video-1.5` | 1080p | 1–15s | Any | ➖ |
+<!-- MODELS_TABLE_END -->
 
 > **Note on audio:** The column above means *"is audio controllable via the `generate_audio` parameter"*, not *"does this model have sound"*. The catalog reports three distinct states:
 >
