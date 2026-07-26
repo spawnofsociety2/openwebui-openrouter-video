@@ -1,6 +1,6 @@
 # OpenRouter Video Generator Tool for OpenWebUI
 
-![OpenWebUI OpenRouter Video Gen](https://github.com/spawnofsociety2/openwebui-openrouter-video/raw/master/assets/openwebui_openrouter_videogen.jpg)
+![OpenWebUI OpenRouter Video Gen — the assistant discovering models and generating a video](assets/openrouter_videogen.gif)
 
 A fully autonomous, "agentic" video generation tool for [OpenWebUI](https://openwebui.com/) powered by [OpenRouter](https://openrouter.ai/). This tool empowers your LLM assistant to dynamically discover available video models, submit generation jobs, securely poll for completion, and directly embed the resulting HD videos inside your OpenWebUI chat stream.
 
@@ -100,3 +100,9 @@ No network, API key, or OpenWebUI install required — `aiohttp` is mocked and t
 ## 📜 License
 
 MIT License. Feel free to fork and modify!
+
+## 🎥 Example Output
+
+The result of the prompt shown above — a short clip generated through OpenRouter and embedded directly in the chat stream.
+
+![Example generated video: a cat and dog in a sunlit living room](assets/sample-generation.gif)
